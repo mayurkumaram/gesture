@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture Recognition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .container {
+            width: 100%;
+            max-width: 1600px;
+            min-height: calc(100vh - 2rem);
+            max-height: calc(100vh - 2rem);
+            overflow: hidden;
+            background-color: #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        @media (min-width: 768px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .content-row {
+                flex-direction: row;
+                justify-content: center;
+                align-items: flex-start;
+                width: 100%;
+            }
+            .video-container {
+                margin-right: 2rem;
+                width: 60%;
+                max-width: 800px;
+            }
+            .results-container {
+                flex-grow: 1;
+                max-width: 350px;
+                margin-left: 0;
+            }
+        }
+
+        video, canvas {
+            border-radius: 1rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transform: scaleX(-1);
+            width: 100%;
+            height: auto;
+            max-height: 550px;
+            aspect-ratio: 16/9;
+        }
+
+        @media (orientation: portrait) and (max-width: 767px) {
+            .container {
+                flex-direction: column;
+                padding: 1rem;
+                max-height: calc(100vh - 2rem);
+                overflow: hidden;
+            }
+            .video-container {
+                width: auto;
+                margin-right: 0;
+                margin-bottom: 1rem;
+                display: flex;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+            video, canvas {
+                width: 250px;
+                height: 300px;
+                max-height: 600px;
+                aspect-ratio: 4/6;
+            }
+            .results-container {
+                width: 90%;
+/* margin-top: 1rem; */
+                margin-left: 0;
+                flex-grow: 1;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding-bottom: 0.5rem;
+            }
+            .emoji-output {
+                font-size: 3rem;
+            }
+            .message-box {
+                font-size: 0.9rem;
+            }
+        }
+
+        .message-box {
+            background-color: #e0f2fe;
+            border-left: 4px solid #38b2ac;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            color: #2c5282;
+/* margin-top: 1.5rem; */
+            text-align: center;
+        }
+        .status-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        .status-loading {
+            background-color: #ffeccf;
+            color: #d17a00;
+        }
+        .status-ready {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .detection-tip {
+            font-size: 0.75rem;
+            color: #555;
+/* margin-top: 0.5rem; */
+            font-style: italic;
+        }
+        .emoji-output {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 w-full text-center">👋 Hand Gesture Recognition</h1>
+
+        <div class="flex flex-col md:flex-row w-full justify-center items-center md:items-stretch">
+            <div class="video-container flex flex-col items-center">
+                <div id="status" class="status-badge status-loading">Loading Model...</div>
+                <video id="webcam" autoplay playsinline></video>
+                <canvas id="output_canvas" class="hidden"></canvas>
+            </div>
+
+            <div class="results-container flex flex-col justify-center items-center mt-6 md:mt-0 flex-grow">
+                <div id="emoji-output" class="emoji-output"></div>
+
+                <div id="gesture-output" class="message-box text-lg">
+                    No hand detected. Please show your hand to the camera.
+                </div>
+                <div class="mt-4 text-gray-600 text-sm text-center">
+                    Try different gestures like: <br> Hi🖐️, Closed Fist✊, Pointing Up👆, Victory✌️.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            FilesetResolver,
+            GestureRecognizer
+        } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
+
+        const webcamVideo = document.getElementById("webcam");
+        const canvasElement = document.getElementById("output_canvas");
+        const canvasCtx = canvasElement.getContext("2d");
+        const gestureOutput = document.getElementById("gesture-output");
+        const emojiOutput = document.getElementById("emoji-output");
+        const statusBadge = document.getElementById("status");
+
+        let gestureRecognizer;
+        let runningMode = "VIDEO";
+        let lastVideoTime = -1;
+        let isWebcamReady = false;
+        let mp_drawing;
+        let mp_hands_connections;
+        let animationFrameId; // To store the ID of the requestAnimationFrame
+
+        async function initializeMediaPipe() {
+            try {
+                const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+                );
+
+                gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task"
+                    },
+                    runningMode: runningMode,
+                    numHands: 1
+                });
+
+                let drawingUtilsReady = false;
+                for (let i = 0; i < 5 && !drawingUtilsReady; i++) {
+                    if (window.MediaPipe && window.MediaPipe.DrawingUtils && window.MediaPipe.Tasks && window.MediaPipe.Tasks.Vision && window.MediaPipe.Tasks.Vision.HandLandmarker) {
+                        mp_drawing = window.MediaPipe.DrawingUtils;
+                        mp_hands_connections = window.MediaPipe.Tasks.Vision.HandLandmarker.HAND_CONNECTIONS;
+                        drawingUtilsReady = true;
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                }
+
+                if (!drawingUtilsReady) {
+                    mp_drawing = {
+                        drawConnectors: () => {},
+                        drawLandmarks: () => {}
+                    };
+                    mp_hands_connections = [];
+                }
+
+                statusBadge.textContent = "Model Loaded. Starting Camera...";
+                statusBadge.classList.remove("status-loading");
+                statusBadge.classList.add("status-ready");
+                startWebcam();
+
+            } catch (error) {
+                console.error("Failed to load MediaPipe components:", error);
+                statusBadge.textContent = "Error loading model!";
+                statusBadge.classList.remove("status-loading");
+                statusBadge.classList.add("status-error");
+                gestureOutput.textContent = "Error: Could not load the gesture recognition model. Please check your internet connection and browser console for more details.";
+            }
+        }
+
+        async function startWebcam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: true
+                });
+                webcamVideo.srcObject = stream;
+
+                webcamVideo.addEventListener("loadeddata", () => {
+                    isWebcamReady = true;
+                    canvasElement.width = webcamVideo.videoWidth;
+                    canvasElement.height = webcamVideo.videoHeight;
+                    canvasElement.classList.remove("hidden");
+                    webcamVideo.classList.add("hidden");
+                    statusBadge.textContent = "Camera Ready. Show your hand!";
+                    statusBadge.classList.remove("status-loading");
+                    statusBadge.classList.add("status-ready");
+                    predictWebcam();
+                });
+            } catch (error) {
+                console.error("Error accessing webcam:", error);
+                statusBadge.textContent = "Error accessing camera!";
+                statusBadge.classList.remove("status-loading");
+                statusBadge.classList.add("status-error");
+                gestureOutput.textContent = "Error: Could not access your webcam. Please allow camera permissions and ensure no other application is using the camera.";
+            }
+        }
+
+        async function predictWebcam() {
+            if (!gestureRecognizer || !isWebcamReady || !mp_drawing || !mp_hands_connections || !mp_drawing.drawConnectors) {
+                animationFrameId = requestAnimationFrame(predictWebcam);
+                return;
+            }
+
+            let results = null;
+
+            if (webcamVideo.currentTime !== lastVideoTime) {
+                lastVideoTime = webcamVideo.currentTime;
+                results = gestureRecognizer.recognizeForVideo(webcamVideo, performance.now());
+            }
+
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(webcamVideo, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results && results.landmarks && results.landmarks.length > 0) {
+                for (const landmarks of results.landmarks) {
+                    mp_drawing.drawConnectors(
+                        canvasCtx,
+                        landmarks,
+                        mp_hands_connections, {
+                            color: '#00FF00',
+                            lineWidth: 5
+                        }
+                    );
+                    mp_drawing.drawLandmarks(
+                        canvasCtx,
+                        landmarks, {
+                            color: '#FF0000',
+                            lineWidth: 2
+                        }
+                    );
+                }
+
+                let displayMessage = "No specific gesture recognized.";
+                let displayEmoji = '';
+                let bgColor = '#e0f2fe';
+                let borderColor = '#38b2ac';
+
+                if (results.gestures.length > 0) {
+                    const topGesture = results.gestures[0][0];
+                    const gestureCategory = topGesture.categoryName;
+                    const confidence = topGesture.score;
+
+                    if (confidence > 0.5) {
+                        if (gestureCategory === "Open_Palm") {
+                            displayMessage = "Gesture: Hi!";
+                            displayEmoji = "🖐️";
+                            bgColor = '#d4edda';
+                            borderColor = '#155724';
+                        } else if (gestureCategory === "Closed_Fist") {
+                            displayMessage = "Gesture: Closed Fist";
+                            displayEmoji = "✊";
+                            bgColor = '#fff3cd';
+                            borderColor = '#856404';
+                        } else if (gestureCategory === "Pointing_Up") {
+                            displayMessage = "Gesture: Pointing Up";
+                            displayEmoji = "👆";
+                            bgColor = '#cce5ff';
+                            borderColor = '#004085';
+                        } else if (gestureCategory === "Victory") {
+                            displayMessage = "Gesture: Victory!";
+                            displayEmoji = "✌️";
+                            bgColor = '#e2ffe2';
+                            borderColor = '#28a745';
+                        }
+                    }
+                }
+
+                gestureOutput.textContent = displayMessage;
+                emojiOutput.textContent = displayEmoji;
+                gestureOutput.style.backgroundColor = bgColor;
+                gestureOutput.style.borderColor = borderColor;
+
+            } else {
+                gestureOutput.textContent = "No hand detected. Please show your hand to the camera.";
+                emojiOutput.textContent = '';
+                gestureOutput.style.backgroundColor = '#e0f2fe';
+                gestureOutput.style.borderColor = '#38b2ac';
+            }
+
+            animationFrameId = window.requestAnimationFrame(predictWebcam);
+        }
+
+        // Handle visibility change
+        function handleVisibilityChange() {
+            if (document.hidden) {
+                // Pause the video stream and stop predictions
+                if (webcamVideo.srcObject) {
+                    webcamVideo.srcObject.getTracks().forEach(track => track.stop());
+                }
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                webcamVideo.pause();
+                statusBadge.textContent = "Paused (Tab Hidden)";
+                statusBadge.classList.remove("status-ready");
+                statusBadge.classList.add("status-loading");
+                gestureOutput.textContent = "Webcam paused. Switch back to resume.";
+                emojiOutput.textContent = '';
+
+            } else {
+                // Resume the video stream and restart predictions
+                startWebcam(); // This will request media, set up loadeddata listener, and call predictWebcam
+                statusBadge.textContent = "Resuming Camera...";
+                statusBadge.classList.remove("status-loading");
+                statusBadge.classList.add("status-ready");
+            }
+        }
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        window.onload = initializeMediaPipe;
+    </script>
+</body>
+</html>
