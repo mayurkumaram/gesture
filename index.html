@@ -91,7 +91,6 @@
             }
             .results-container {
                 width: 90%;
-/* margin-top: 1rem; */
                 margin-left: 0;
                 flex-grow: 1;
                 overflow: hidden;
@@ -116,7 +115,6 @@
             border-radius: 0.75rem;
             font-weight: 600;
             color: #2c5282;
-/* margin-top: 1.5rem; */
             text-align: center;
         }
         .status-badge {
@@ -141,7 +139,6 @@
         .detection-tip {
             font-size: 0.75rem;
             color: #555;
-/* margin-top: 0.5rem; */
             font-style: italic;
         }
         .emoji-output {
@@ -194,7 +191,7 @@
         let isWebcamReady = false;
         let mp_drawing;
         let mp_hands_connections;
-        let animationFrameId; // To store the ID of the requestAnimationFrame
+        let animationFrameId;
 
         async function initializeMediaPipe() {
             try {
@@ -355,10 +352,8 @@
             animationFrameId = window.requestAnimationFrame(predictWebcam);
         }
 
-        // Handle visibility change
         function handleVisibilityChange() {
             if (document.hidden) {
-                // Pause the video stream and stop predictions
                 if (webcamVideo.srcObject) {
                     webcamVideo.srcObject.getTracks().forEach(track => track.stop());
                 }
@@ -374,8 +369,7 @@
                 emojiOutput.textContent = '';
 
             } else {
-                // Resume the video stream and restart predictions
-                startWebcam(); // This will request media, set up loadeddata listener, and call predictWebcam
+                startWebcam();
                 statusBadge.textContent = "Resuming Camera...";
                 statusBadge.classList.remove("status-loading");
                 statusBadge.classList.add("status-ready");
